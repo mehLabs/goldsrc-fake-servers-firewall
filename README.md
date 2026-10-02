@@ -6,7 +6,7 @@ A repository listing all the IP address listing fake, bloaty servers, and create
 Since the SteamPIPE update in 2013, which would bring the GoldSrc's query system as the same as all Source-based games, Counter-Strike 1.6 suffered from an exploit that would flood the masterservers with fake servers, deceiving players by redirecting all of them to a single, central server. Their purposes would be to scam people with fake, and potentially steal players' SteamIDs to simulate fake "active players". 
 
 Here is a small example of how the serverlist looks in CS 1.6 :
-![A small example of fake servers](https://raw.githubusercontent.com/Ch0wW/goldsrc-fake-servers-firewall/main/assets/serverbrowser.png)
+![A small example of fake servers](https://raw.githubusercontent.com/mehLabs/goldsrc-fake-servers-firewall/main/assets/serverbrowser.png)
 
 This problem does not only target Counter-Strike 1.6, but also Counter-Strike: Source, Half-Life 2: Deathmatch, Team-Fortress 2, Left 4 Dead 2, and even Counter-Strike 2, which present the same problematic issues as CS 1.6.
 
@@ -33,7 +33,7 @@ We recommend you from adding any server to your favorites, so you can see them f
 Open a Powershell window as an administrator (WIN + X, then `Windows Powershell (Admin)`). Copy and paste the following command, and run it :
 
 ```ps1
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Ch0wW/goldsrc-fake-servers-firewall/main/BlockFakeServers.ps1'))
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/mehLabs/goldsrc-fake-servers-firewall/main/BlockFakeServers.ps1'))
 ```
 
 **__One rule of thumb is to always look at the script before running it.__**
@@ -51,7 +51,7 @@ If you have doubts seeing a regular server or a fake server, you can quickly fin
 - Any server that has absurd players statistics (some players having more than 300 frags in less than 30 minutes) **is guaranteed** to be a fake server. You can even hit the refresh key repeatedly, and see absolutely new players with already a high score! 
 - When querying a server you think is suspicious, don't hesitate to repeat that operation a few times. If the server name, map or the player counter repeatedly changes, it's a fake server that can be safely blacklisted.
 
-<video src="https://raw.githubusercontent.com/Ch0wW/goldsrc-fake-servers-firewall/main/assets/refresh_query.mp4" width="300" />
+<video src="https://raw.githubusercontent.com/mehLabs/goldsrc-fake-servers-firewall/main/assets/refresh_query.mp4" width="300" />
 
 ## How to report fake servers? Is there a false positive detected?
 
@@ -66,3 +66,7 @@ However, the Source Engine includes the ability to blocklist IPs through a file.
 ## Are you planning something similar for Linux / Steam Deck ?
 
 Considering the increasing number of Steam Deck users, this is something we plan creating in a near future.
+
+## Automated CS 1.6 audit
+
+The [auditor](tools/cs16-audit/README.md) queries Steam and adds detected IPv4 addresses with ping below 100 ms to this fork’s blacklist. Updates preserve all existing addresses and skip duplicates across groups. Run `python tools/cs16-audit/audit.py --publish` to audit, update, commit the JSON and push to `main`.
