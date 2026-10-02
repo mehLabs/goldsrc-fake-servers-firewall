@@ -57,7 +57,7 @@ def sample_server(row, samples, interval, timeout, limiter):
     if row.get('steam_ping_ms') is None:
         for _ in range(3):
             limiter.wait(address[0])
-            o = {'time': stamp()}
+            o = {'time': stamp(), 'phase': 'preflight'}
             try:
                 o['before'] = query(address, 'info', timeout)
             except (OSError, ValueError, EOFError) as exc:
@@ -73,7 +73,7 @@ def sample_server(row, samples, interval, timeout, limiter):
             return {'endpoint': f'{address[0]}:{address[1]}', 'ip': address[0],
                     'steam': row, 'observations': observations}
     for index in range(samples):
-        observation = {'time': stamp()}
+        observation = {'time': stamp(), 'phase': 'refresh'}
         for kind, key in [('info', 'before'), ('players', 'player_list'), ('info', 'after')]:
             limiter.wait(address[0])
             try:
@@ -94,13 +94,23 @@ def classify(result, max_ping):
     median = statistics.median(pings) if pings else None
     reasons, signals = [], []
     stable_counts = []
-    bracket_changes = 0
+    # Compare the initial INFO in each spaced refresh round. Four snapshots
+    # provide a baseline plus three refreshes; failures break the sequence.
+    previous_identity = None
+    change_streak = 0
+    longest_change_streak = 0
     impossible = 0
     for o in observations:
         before, after = o.get('before'), o.get('after')
+        if o.get('phase') != 'preflight':
+            identity = (before['name'], before['map']) if before else None
+            if identity is not None and previous_identity is not None and identity != previous_identity:
+                change_streak += 1
+                longest_change_streak = max(longest_change_streak, change_streak)
+            else:
+                change_streak = 0
+            previous_identity = identity
         if before and after:
-            if (before['name'], before['map']) != (after['name'], after['map']):
-                bracket_changes += 1
             if 'player_list' in o and all(before[k] == after[k] for k in ('name', 'map', 'players', 'bots')):
                 stable_counts.append((before['players'], before['bots'], len(o['player_list'])))
         for info in (before, after):
@@ -116,8 +126,9 @@ def classify(result, max_ping):
         reasons.append('steamid_cambia_en_mismo_endpoint')
     if impossible >= 2:
         reasons.append('datos_incompatibles_con_cs16_repetidos')
-    if bracket_changes >= 3 and len(names) >= 3 and len(maps) >= 2:
-        reasons.append('nombre_y_mapa_rotan_en_consultas_consecutivas')
+    rotating_identity = longest_change_streak >= 3
+    if rotating_identity:
+        reasons.append('nombre_o_mapa_cambia_en_tres_refrescos_consecutivos')
     elif len(names) > 1:
         signals.append('nombre_cambia')
     if len(maps) > 1:
@@ -144,6 +155,8 @@ def classify(result, max_ping):
     elif infos and all(i['players'] == 0 for i in infos):
         status = 'seguro_por_regla_usuario'
         reasons = ['cero_jugadores_regla_usuario']
+    elif rotating_identity:
+        status = 'spam'
     elif reasons:
         status = 'sospechoso'
     elif len(infos) < 4 or sum('player_list' in o for o in observations) < 2:
@@ -152,7 +165,8 @@ def classify(result, max_ping):
         status = 'sin_indicios'
     return {**result, 'status': status, 'median_ping_ms': round(median, 3) if median is not None else None,
             'reasons': reasons, 'signals': signals, 'names': names, 'maps': maps,
-            'stable_player_checks': len(stable_counts), 'player_query_failures': failures}
+            'stable_player_checks': len(stable_counts), 'player_query_failures': failures,
+            'consecutive_identity_changes': longest_change_streak}
 
 
 def classify_steam_rule(row):
@@ -233,7 +247,7 @@ def main():
     parser.add_argument('--no-update-blacklist', action='store_true', help='Sólo genera informes; no actualiza la blacklist.')
     parser.add_argument('--publish', action='store_true', help='Commitea sólo el JSON y pushea origin/main; requiere main sincronizada.')
     parser.add_argument('--max-ping', type=float, default=100)
-    parser.add_argument('--samples', type=int, default=4)
+    parser.add_argument('--samples', type=int, default=4, help='Rondas de refresco: mínimo 4 (lectura inicial + 3 refrescos).')
     parser.add_argument('--interval', type=float, default=1.5)
     parser.add_argument('--timeout', type=float, default=2)
     parser.add_argument('--discovery-timeout', type=float, default=300)
@@ -256,10 +270,10 @@ def main():
             publish(args.blacklist)
         return
     if (not all(math.isfinite(v) for v in (args.qps, args.max_ping, args.interval, args.timeout, args.discovery_timeout))
-            or args.samples < 3 or not 1 <= args.workers <= 32 or not 0 < args.qps <= 100
+            or args.samples < 4 or not 1 <= args.workers <= 32 or not 0 < args.qps <= 100
             or args.max_ping <= 0 or args.interval < 0 or args.timeout <= 0
             or args.discovery_timeout <= 0 or args.limit is not None and args.limit <= 0):
-        parser.error('Valores inválidos: samples>=3, workers=1..32, qps=1..100; tiempos/ping positivos.')
+        parser.error('Valores inválidos: samples>=4, workers=1..32, qps=1..100; tiempos/ping positivos.')
     out = args.output or Path(__file__).resolve().parent / ('results-' + datetime.now().strftime('%Y%m%d-%H%M%S'))
     out.mkdir(parents=True, exist_ok=False)
     if args.input:
@@ -312,7 +326,8 @@ def main():
             pending.append(row)
     print(f'Reglas iniciales: {dict(Counter(r["status"] for r in results))}; '
           f'consultas detalladas: {len(pending)}', flush=True)
-    metadata['user_rules'] = {'zero_players': 'seguro_por_regla_usuario', 'more_than_32_players': 'spam'}
+    metadata['user_rules'] = {'zero_players': 'seguro_por_regla_usuario', 'more_than_32_players': 'spam',
+                              'three_consecutive_name_or_map_changes': 'spam'}
     export(out, results, metadata)
     limiter = RateLimiter(args.qps)
     last_save = time.monotonic()

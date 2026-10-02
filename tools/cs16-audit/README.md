@@ -75,9 +75,16 @@ un lote parcial también puede aportar IPs nuevas, sin declarar cobertura total.
   seguridad. Se aplica por endpoint, no a todos los puertos de esa IP.
 - **Más de 32 jugadores anunciados:** `spam`.
 - **1–32 jugadores:** cuatro rondas de INFO → PLAYER → INFO. Marca como
-  `sospechoso` las rotaciones repetidas de nombre y mapa en consultas
-  consecutivas, SteamIDs cambiantes, campos incompatibles con CS 1.6 o
-  contradicciones repetidas entre conteo y lista de jugadores. Se compara la
+  `spam` si cambia el nombre **y/o** el mapa en **tres refrescos consecutivos**:
+  se compara la primera INFO de cada ronda, una lectura inicial más tres
+  refrescos (cuatro lecturas). La separación predeterminada entre rondas es
+  1,5 segundos, además del tiempo de las consultas. Un cambio aislado no basta;
+  una lectura igual o fallida corta la secuencia. Las consultas iniciales
+  para medir ping por Web API no cuentan como estos refrescos.
+  `--samples` exige al menos cuatro rondas. El informe guarda la mayor secuencia
+  en `consecutive_identity_changes`. Marca como `sospechoso` SteamIDs cambiantes,
+  campos incompatibles con CS 1.6 o contradicciones repetidas entre conteo y
+  lista de jugadores. Se compara la
   lista sólo si nombre, mapa, conteo y bots permanecieron iguales entre las
   dos respuestas INFO que rodean la consulta de jugadores.
 - Un cambio normal de mapa, jugadores o un timeout no basta para acusar SPAM.

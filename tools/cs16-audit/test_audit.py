@@ -91,8 +91,90 @@ class AuditTests(unittest.TestCase):
         # Act
         verdict = classify(result(observations), 100)
         # Assert
-        self.assertEqual(verdict['status'], 'sospechoso')
-        self.assertIn('nombre_y_mapa_rotan_en_consultas_consecutivas', verdict['reasons'])
+        self.assertEqual(verdict['status'], 'spam')
+        self.assertIn('nombre_o_mapa_cambia_en_tres_refrescos_consecutivos', verdict['reasons'])
+        self.assertEqual(verdict['consecutive_identity_changes'], 3)
+
+    def test_three_changes_in_name_or_map_are_required(self):
+        for identities in [
+                [('Test', 'de_dust2'), ('Test', 'de_inferno'), ('Test', 'de_dust2'), ('Test', 'de_inferno')],
+                [('A', 'de_dust2'), ('B', 'de_dust2'), ('A', 'de_dust2'), ('B', 'de_dust2')],
+                [('A', 'de_dust2'), ('B', 'de_dust2'), ('B', 'de_inferno'), ('A', 'de_inferno')]]:
+            with self.subTest(identities=identities):
+                # Arrange: baseline + three refreshes, changing either field each time.
+                observations = [{'before': info(name=name, map_name=map_name),
+                                 'after': info(name=name, map_name=map_name),
+                                 'player_list': [{'name': 'Player'}] * 12}
+                                for name, map_name in identities]
+                # Act
+                verdict = classify(result(observations), 100)
+                # Assert
+                self.assertEqual(verdict['status'], 'spam')
+                self.assertEqual(verdict['consecutive_identity_changes'], 3)
+
+    def test_isolated_or_nonconsecutive_changes_are_not_spam(self):
+        for maps in [
+                ['de_dust2', 'de_inferno', 'de_inferno', 'de_inferno'],
+                ['de_dust2', 'de_inferno', 'de_dust2'],
+                ['de_dust2', 'de_inferno', 'de_inferno', 'de_dust2', 'de_dust2', 'de_inferno']]:
+            with self.subTest(maps=maps):
+                # Arrange: one change, only two changes, or three separated changes.
+                observations = [{'before': info(map_name=m), 'after': info(map_name=m),
+                                 'player_list': [{'name': 'Player'}] * 12} for m in maps]
+                # Act
+                verdict = classify(result(observations), 100)
+                # Assert
+                self.assertEqual(verdict['status'], 'sin_indicios')
+                self.assertEqual(verdict['reasons'], [])
+                self.assertLess(verdict['consecutive_identity_changes'], 3)
+
+    def test_missing_refresh_breaks_identity_change_streak(self):
+        # Arrange: changes before and after a failed INFO must not be joined.
+        observations = [{'before': info(name=name), 'after': info(name=name),
+                         'player_list': [{'name': 'Player'}] * 12}
+                        for name in ['A', 'B', 'C', 'D', 'E']]
+        observations.insert(2, {'before_error': 'TimeoutError', 'after_error': 'TimeoutError'})
+        # Act
+        verdict = classify(result(observations), 100)
+        # Assert
+        self.assertEqual(verdict['status'], 'sin_indicios')
+        self.assertEqual(verdict['consecutive_identity_changes'], 2)
+
+    def test_preflight_does_not_count_as_spaced_refreshes(self):
+        # Arrange: three fast ping probes followed by only two real changes.
+        observations = [{'before': info(name=name), 'phase': 'preflight'} for name in ['X', 'Y', 'Z']]
+        observations += [{'before': info(name=name), 'after': info(name=name), 'phase': 'refresh',
+                          'player_list': [{'name': 'Player'}] * 12} for name in ['A', 'B', 'C', 'C']]
+        # Act
+        verdict = classify(result(observations), 100)
+        # Assert
+        self.assertEqual(verdict['status'], 'sin_indicios')
+        self.assertEqual(verdict['consecutive_identity_changes'], 2)
+
+    def test_one_map_change_during_player_query_is_not_spam(self):
+        # Arrange: a real map transition occurs inside a single INFO/PLAYER/INFO round.
+        observations = [{'before': info(map_name='de_dust2'), 'after': info(map_name='de_inferno'),
+                         'player_list': [{'name': 'Player'}] * 12}]
+        observations += [{'before': info(map_name='de_inferno'), 'after': info(map_name='de_inferno'),
+                          'player_list': [{'name': 'Player'}] * 12} for _ in range(3)]
+        # Act
+        verdict = classify(result(observations), 100)
+        # Assert
+        self.assertEqual(verdict['status'], 'sin_indicios')
+        self.assertEqual(verdict['consecutive_identity_changes'], 1)
+
+    def test_rotation_preserves_zero_player_rule_and_ping_cutoff(self):
+        for players, ping, expected in [(0, 20, 'seguro_por_regla_usuario'), (12, 100, 'fuera_de_ping')]:
+            with self.subTest(players=players, ping=ping):
+                # Arrange: all three identity changes, but an earlier filter takes precedence.
+                observations = [{'before': {**info(name=str(i), players=players), 'ping_ms': ping},
+                                 'after': {**info(name=str(i), players=players), 'ping_ms': ping}}
+                                for i in range(4)]
+                # Act
+                verdict = classify(result(observations), 100)
+                # Assert
+                self.assertEqual(verdict['consecutive_identity_changes'], 3)
+                self.assertEqual(verdict['status'], expected)
 
     def test_user_rules_and_ping_boundary(self):
         # Arrange
