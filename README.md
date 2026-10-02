@@ -67,6 +67,73 @@ However, the Source Engine includes the ability to blocklist IPs through a file.
 
 Considering the increasing number of Steam Deck users, this is something we plan creating in a near future.
 
-## Automated CS 1.6 audit
+## Auditor automático de CS 1.6
 
-The [auditor](tools/cs16-audit/README.md) queries Steam and adds detected IPv4 addresses with ping below 100 ms to this fork’s blacklist. Updates preserve all existing addresses and skip duplicates across groups. Run `python tools/cs16-audit/audit.py --publish` to audit, update, commit the JSON and push to `main`.
+### Requisitos
+
+- Windows y Python 3.10 o superior **de 64 bits**. No requiere paquetes externos.
+- Steam abierto, con tu cuenta iniciada y CS 1.6 original en la biblioteca.
+- Una `steam_api64.dll` oficial instalada. El auditor la busca automáticamente en
+  las bibliotecas de Steam; en esta PC usa la de CS2. Si no la encuentra, usá
+  `--steam-api "RUTA\steam_api64.dll"`.
+- Para publicar: Git configurado con tu nombre/email y acceso de escritura a
+  `origin`. La rama `main` debe estar sincronizada y no debe haber cambios staged.
+
+### Ejecutar y publicar
+
+Abrí **PowerShell normal**, sin necesidad de administrador. En esta PC el fork
+está en `C:\Developer\Opensource\goldsrc-fake-servrs-firewall`:
+
+```powershell
+cd C:\Developer\Opensource\goldsrc-fake-servrs-firewall
+git switch main
+git pull --ff-only
+python tools\cs16-audit\audit.py --publish
+```
+
+Si `python` no apunta a una instalación de 64 bits compatible, en esta PC podés
+reemplazar la última línea por este comando con el Python que usamos:
+
+```powershell
+& "C:\Developer\Pythons\Python310\python.exe" tools\cs16-audit\audit.py --publish
+```
+
+El comando consulta Steam, analiza servidores con **ping menor a 100 ms** y
+agrega las IPs detectadas a `blacklisted_iplist.json`, sin duplicar IPs ni quitar
+las existentes. Después crea el commit `feat: blacklist updated (YYYY-MM-DD)` y
+pushea a `origin/main`. Sin cambios en el JSON no crea commit.
+
+Los servidores vacíos se saltan; los que anuncian más de 32 jugadores se marcan
+como SPAM. Para detectar rotación de nombre y/o mapa toma una lectura inicial
+y tres refrescos: exige cambios en los tres refrescos consecutivos. Una lectura
+igual o fallida corta la secuencia.
+
+Muestra progreso en la terminal y guarda informes en
+`tools\cs16-audit\results-fecha-hora`. La consulta puede tardar varios minutos.
+Si Steam devuelve un lote incompleto, el informe queda marcado como parcial.
+Durante el análisis, Ctrl+C guarda las mediciones terminadas y cancela la
+actualización del JSON.
+
+### Otras formas de ejecutar
+
+Auditar y actualizar el JSON local, sin publicar:
+
+```powershell
+python tools\cs16-audit\audit.py
+```
+
+Auditar y generar únicamente informes:
+
+```powershell
+python tools\cs16-audit\audit.py --no-update-blacklist
+```
+
+Agregar un informe guardado y publicarlo, sin repetir las consultas:
+
+```powershell
+python tools\cs16-audit\audit.py --from-report "RUTA\report.json" --publish
+```
+
+Los informes son locales y no se incluyen en Git. Ver [documentación del
+auditor](tools/cs16-audit/README.md) para opciones de descubrimiento, filtros,
+reglas y pruebas.

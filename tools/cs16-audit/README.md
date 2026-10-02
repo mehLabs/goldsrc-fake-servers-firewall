@@ -8,15 +8,27 @@ y una `steam_api64.dll` oficial ya instalada. En esta PC detecta la DLL de CS2.
 
 ## Ejecutar
 
-Desde `C:\Developer\Opensource\goldsrc-fake-servrs-firewall`:
+Abrí Steam e iniciá sesión. En PowerShell normal, para auditar, actualizar el
+JSON y publicar los cambios:
 
 ```powershell
-python tools\cs16-audit\audit.py
+cd C:\Developer\Opensource\goldsrc-fake-servrs-firewall
+git switch main
+git pull --ff-only
+python tools\cs16-audit\audit.py --publish
 ```
+
+Git debe tener configurado tu nombre/email y acceso de escritura a `origin`.
+Para actualizar sólo el JSON local, ejecutá el último comando sin `--publish`.
+Para generar sólo informes, usá `--no-update-blacklist`.
 
 El ping predeterminado es **estrictamente menor a 100 ms**. Si `python` apunta
 a otra instalación, en esta PC también se puede ejecutar con
-`C:\Developer\Pythons\Python310\python.exe`.
+`C:\Developer\Pythons\Python310\python.exe`:
+
+```powershell
+& "C:\Developer\Pythons\Python310\python.exe" tools\cs16-audit\audit.py --publish
+```
 
 La detección automática busca las bibliotecas de Steam. Si necesitás indicar
 la DLL:
